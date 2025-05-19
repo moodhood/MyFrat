@@ -1,21 +1,23 @@
 {
   "name": "myfrat",
   "version": "1.0.0",
-  "description": "��#\u0000 \u0000M\u0000y\u0000F\u0000r\u0000a\u0000t\u0000\r\u0000 \u0000",
+  "type": "module",
+  "description": "MyFrat backend",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^6.8.2",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
-    "zod": "^3.24.4"
+    "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "prisma": "^6.8.2"
   }
 }

@@ -1,26 +1,56 @@
-import 'dotenv/config';            // Loads .env into process.env
-import express from 'express';
+// server/index.js
 
-import helloRouter from './routes/hello.js';
-import errorHandler from './middleware/errorHandler.js';
+import 'dotenv/config'                 // Load .env into process.env
+import express from 'express'
+import { PrismaClient } from '@prisma/client'
+import cors from 'cors' 
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+import authRouter from './routes/auth.js'
+import authMiddleware from './middleware/auth.js'
+import errorHandler from './middleware/errorHandler.js'
 
-// Parse JSON bodies
-app.use(express.json());
+const app = express()
+const prisma = new PrismaClient()
+const PORT = process.env.PORT || 3000
 
-// Mount your routes
-app.use('/api/hello', helloRouter);
+// 0. Enable CORS for your frontend origin
+app.use(cors({
+  origin: 'http://localhost:3001'       // ← adjust if your client runs on a different port
+}))
 
-// Fallback 404
-app.use((req, res, next) => {
-  res.status(404).json({ error: 'Not found' });
-});
+// 1. JSON body parsing
+app.use(express.json())
 
-// Centralized error handler
-app.use(errorHandler);
+// 2. Public auth routes
+app.use('/api/auth', authRouter)
 
-app.listen(PORT, () =>
+// 3. Protected endpoint
+app.get('/api/profile', authMiddleware, async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: Number(req.user.id) },
+      select: { id: true, email: true, name: true, createdAt: true }
+    })
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    return res.json(user)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// 4. 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' })
+})
+
+// 5. Centralized error handler
+app.use(errorHandler)
+
+// 6. Start the server
+app.listen(PORT, () => {
   console.log(`🚀 Server listening at http://localhost:${PORT}`)
-);
+})
