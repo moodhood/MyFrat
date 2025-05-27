@@ -1,22 +1,94 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
+// 1. Point at your DB
 datasource db {
-  provider = "postgresql"
+  provider = "postgresql"  
   url      = env("DATABASE_URL")
 }
 
+// 2. Generate the client
 generator client {
   provider = "prisma-client-js"
 }
 
+model Role {
+  id          Int    @id @default(autoincrement())
+  name        String @unique
+  permissions Json   @default("[]")     // stores an array of strings
+  users       User[]
+}
+
 model User {
+  id              Int                  @id @default(autoincrement())
+  email           String               @unique
+  passwordHash    String
+  name            String?
+  phone           String?              // ✅ added
+  birthday        DateTime?            // ✅ added
+  address         String?              // ✅ added
+  profilePicture  String?              // ✅ added
+  role            Role                 @relation(fields: [roleId], references: [id])
+  roleId          Int
+  duties          DutyAssignment[]
+  philanthropy    PhilanthropyLog[]
+  votes           Vote[]
+  createdAt       DateTime             @default(now())
+}
+
+model Motion {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  optionA     String
+  optionB     String
+  deadline    DateTime
+  stopped     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  votes       Vote[]
+}
+
+model Vote {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  motion    Motion   @relation(fields: [motionId], references: [id])
+  motionId  Int
+  choice    Boolean
+  castAt    DateTime @default(now())
+
+  @@unique([userId, motionId])
+}
+
+model Event {
+  id          Int            @id @default(autoincrement())
+  title       String
+  description String?
+  location    String?
+  start       DateTime
+  end         DateTime
+  category    EventCategory
+}
+
+enum EventCategory {
+  PHILANTHROPY
+  BROTHERHOOD
+  ADMIN
+  OTHER
+}
+
+model DutyAssignment {
+  id          Int      @id @default(autoincrement())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      Int
+  description String
+  dueDate     DateTime
+  completed   Boolean  @default(false)
+}
+
+model PhilanthropyLog {
   id           Int      @id @default(autoincrement())
-  email        String   @unique
-  passwordHash String
-  name         String?
-  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+  userId       Int
+  date         DateTime
+  organization String
+  hours        Int
+  notes        String?
 }
