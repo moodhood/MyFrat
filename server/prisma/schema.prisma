@@ -1,64 +1,100 @@
-// 1. Point at your DB
 datasource db {
-  provider = "postgresql"  
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// 2. Generate the client
 generator client {
   provider = "prisma-client-js"
 }
 
 model Role {
-  id          Int    @id @default(autoincrement())
-  name        String @unique
-  permissions Json   @default("[]")     // stores an array of strings
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  permissions Json    @default("[]")
   users       User[]
 }
 
 model User {
-  id              Int                  @id @default(autoincrement())
-  email           String               @unique
-  passwordHash    String
-  name            String?
-  phone           String?              // ✅ added
-  birthday        DateTime?            // ✅ added
-  address         String?              // ✅ added
-  profilePicture  String?              // ✅ added
-  role            Role                 @relation(fields: [roleId], references: [id])
-  roleId          Int
-  duties          DutyAssignment[]
-  philanthropy    PhilanthropyLog[]
-  votes           Vote[]
-  createdAt       DateTime             @default(now())
+  id                Int               @id @default(autoincrement())
+  email             String            @unique
+  passwordHash      String
+  name              String?
+  phone             String?
+  birthday          DateTime?
+  address           String?
+  profilePicture    String?
+  lastSeen          DateTime?         @default(now())
+  emailConfirmed    Boolean           @default(false)
+  emailConfirmCode  String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime          @default(now())
+
+  roleId            Int
+  role              Role              @relation(fields: [roleId], references: [id])
+
+  duties            DutyAssignment[]
+  philanthropy      PhilanthropyLog[]
+  votes             Vote[]
+  createdMotions    Motion[]          @relation("CreatedMotions")
+}
+
+model DutyAssignment {
+  id          Int      @id @default(autoincrement())
+  description String
+  dueDate     DateTime
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PhilanthropyLog {
+  id           Int      @id @default(autoincrement())
+  date         DateTime
+  organization String
+  hours        Int
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Motion {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   title       String
-  description String
-  optionA     String
-  optionB     String
-  deadline    DateTime
-  stopped     Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  description String?
+  options     String[]
+  deadline    DateTime?
+  stopped     Boolean   @default(false)
+  archived    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  creatorId   Int
+  creator     User      @relation("CreatedMotions", fields: [creatorId], references: [id], onDelete: Cascade)
+
   votes       Vote[]
 }
 
 model Vote {
   id        Int      @id @default(autoincrement())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    Int
-  motion    Motion   @relation(fields: [motionId], references: [id])
-  motionId  Int
-  choice    Boolean
+  choice    String
   castAt    DateTime @default(now())
+
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  motionId  Int
+  motion    Motion   @relation(fields: [motionId], references: [id], onDelete: Cascade)
 
   @@unique([userId, motionId])
 }
 
 model Event {
-  id          Int            @id @default(autoincrement())
+  id          Int           @id @default(autoincrement())
   title       String
   description String?
   location    String?
@@ -74,21 +110,24 @@ enum EventCategory {
   OTHER
 }
 
-model DutyAssignment {
-  id          Int      @id @default(autoincrement())
-  user        User     @relation(fields: [userId], references: [id])
-  userId      Int
-  description String
-  dueDate     DateTime
-  completed   Boolean  @default(false)
+model Folder {
+  id         Int        @id @default(autoincrement())
+  name       String
+  parentId   Int?       // nullable for root-level folders
+  parent     Folder?    @relation("Subfolders", fields: [parentId], references: [id])
+  children   Folder[]   @relation("Subfolders")
+  createdAt  DateTime   @default(now())
+  createdBy  Int        // officer user ID
+  documents  Document[] // one-to-many to Document
 }
 
-model PhilanthropyLog {
-  id           Int      @id @default(autoincrement())
-  user         User     @relation(fields: [userId], references: [id])
-  userId       Int
-  date         DateTime
-  organization String
-  hours        Int
-  notes        String?
+model Document {
+  id         Int        @id @default(autoincrement())
+  name       String
+  url        String
+  pdfUrl     String?    // optional PDF version (converted from Office formats)
+  category   String?
+  folderId   Int?       // nullable if in root
+  folder     Folder?    @relation(fields: [folderId], references: [id])
+  createdAt  DateTime   @default(now())
 }

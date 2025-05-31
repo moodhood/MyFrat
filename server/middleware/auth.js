@@ -1,3 +1,5 @@
+// middleware/auth.js
+
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
@@ -5,7 +7,7 @@ const prisma = new PrismaClient();
 const { JWT_SECRET } = process.env;
 
 if (!JWT_SECRET) {
-  throw new Error('❌ JWT_SECRET is not set. Check your .env file.');
+  throw new Error('❌ JWT_SECRET is not set in .env');
 }
 
 export default async function authMiddleware(req, res, next) {
@@ -15,16 +17,16 @@ export default async function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  const token = authHeader.slice(7); // Remove 'Bearer '
+  const token = authHeader.slice(7);
 
   let payload;
   try {
     payload = jwt.verify(token, JWT_SECRET);
-  } catch (err) {
+  } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 
-  const userId = payload.userId || payload.id;
+  const userId = payload.id;
   if (!userId) {
     return res.status(401).json({ error: 'Invalid token payload' });
   }
@@ -35,15 +37,19 @@ export default async function authMiddleware(req, res, next) {
       select: {
         id: true,
         email: true,
-        role: {
-          select: { permissions: true }
-        }
+        role: { select: { permissions: true } }
       }
     });
 
     if (!user) {
-      return res.status(401).json({ error: 'User not found' });
+      return res.status(401).json({ error: 'User not found (possibly deleted)' });
     }
+
+    // Update lastSeen but don't include in returned data
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastSeen: new Date() }
+    });
 
     req.user = {
       id: user.id,
@@ -53,7 +59,7 @@ export default async function authMiddleware(req, res, next) {
 
     next();
   } catch (err) {
-    console.error('❌ Error in auth middleware:', err);
+    console.error('❌ Auth middleware failed:', err);
     res.status(500).json({ error: 'Authentication failed' });
   }
 }

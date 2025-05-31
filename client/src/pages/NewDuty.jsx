@@ -1,64 +1,142 @@
-import React, { useState, useEffect, useContext } from 'react'
-import { listUsers, assignDuty } from '../services/api'
-import { useNavigate } from 'react-router-dom'
-import { AuthContext } from '../contexts/AuthContext'
-import Layout from '../components/Layout'
+// src/pages/Motions.jsx
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import Layout from '../components/Layout';
+import { toast } from 'react-toastify';
 
-export default function NewDuty() {
-  const { user } = useContext(AuthContext)
-  const [users, setUsers] = useState([])
-  const [form, setForm] = useState({ userId: '', description: '', dueDate: '' })
-  const navigate = useNavigate()
+export default function Motions() {
+  const [activeMotions, setActiveMotions] = useState([]);
+  const [archivedMotions, setArchivedMotions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    if (user.permissions.includes('assign_duties')) {
-      listUsers().then(setUsers)
-    }
-  }, [user])
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const [activeRes, archivedRes] = await Promise.all([
+          fetch('http://localhost:3000/api/motions', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch('http://localhost:3000/api/motions?archived=true', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
 
-  const handleChange = e =>
-    setForm({ ...form, [e.target.name]: e.target.value })
+        if (!activeRes.ok || !archivedRes.ok) {
+          throw new Error('Failed to fetch motions');
+        }
 
-  const handleSubmit = async e => {
-    e.preventDefault()
-    await assignDuty(form)
-    navigate('/duties')
-  }
+        const activeData = await activeRes.json();
+        const archivedData = await archivedRes.json();
+
+        setActiveMotions(Array.isArray(activeData) ? activeData : []);
+        setArchivedMotions(
+          Array.isArray(archivedData) ? archivedData : []
+        );
+      } catch (err) {
+        console.error('❌ Error fetching motions:', err);
+        toast.error(err.message || 'Error loading motions.');
+        setActiveMotions([]);
+        setArchivedMotions([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   return (
     <Layout>
-      <form onSubmit={handleSubmit} className="p-4 max-w-lg mx-auto">
-        <select
-          name="userId"
-          onChange={handleChange}
-          className="w-full mb-2 p-2 border rounded"
-          required
-        >
-          <option value="">Assign to…</option>
-          {users.map(u => (
-            <option key={u.id} value={u.id}>
-              {u.name}
-            </option>
-          ))}
-        </select>
-        <textarea
-          name="description"
-          placeholder="Duty description"
-          onChange={handleChange}
-          className="w-full mb-2 p-2 border rounded"
-          required
-        />
-        <input
-          name="dueDate"
-          type="date"
-          onChange={handleChange}
-          className="w-full mb-4 p-2 border rounded"
-          required
-        />
-        <button type="submit" className="w-full p-2 bg-green-500 text-white rounded">
-          Assign Duty
-        </button>
-      </form>
+      <div className="max-w-3xl mx-auto p-4 space-y-10">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Voting Motions</h1>
+          <button
+            onClick={() => navigate('/motions/new')}
+            className="bg-blue-600 text-white px-4 py-2 rounded text-sm"
+          >
+            + New Motion
+          </button>
+        </div>
+
+        {/* Active Motions */}
+        <div>
+          <h2 className="text-xl font-semibold mb-2">🟢 Active & Open</h2>
+          {loading ? (
+            <p className="text-gray-500">Loading motions...</p>
+          ) : activeMotions.length === 0 ? (
+            <p className="text-gray-500">
+              No active motions available.
+            </p>
+          ) : (
+            <ul className="space-y-4">
+              {activeMotions.map((m) => (
+                <li
+                  key={m.id}
+                  className="bg-white border rounded-lg p-4 shadow-sm hover:bg-gray-50 transition"
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-semibold">{m.title}</p>
+                      <p className="text-sm text-gray-600">
+                        {m.stopped ? '🔒 Closed' : '🟢 Open'} —{' '}
+                        {new Date(m.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Link
+                      to={`/motions/${m.id}`}
+                      className="text-blue-600 text-sm hover:underline"
+                    >
+                      View →
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Archived Motions */}
+        <div>
+          <h2 className="text-xl font-semibold mb-2">
+            📦 Archived Results
+          </h2>
+          {loading ? (
+            <p className="text-gray-500">
+              Loading archived motions...
+            </p>
+          ) : archivedMotions.length === 0 ? (
+            <p className="text-gray-500">
+              No motions have been archived yet.
+            </p>
+          ) : (
+            <ul className="space-y-4">
+              {archivedMotions.map((m) => (
+                <li
+                  key={m.id}
+                  onClick={() => navigate(`/motions/${m.id}`)}
+                  className="bg-white border rounded-lg p-4 shadow-sm hover:bg-gray-50 transition cursor-pointer"
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-semibold">{m.title}</p>
+                      <p className="text-sm text-gray-600">
+                        Archived:{' '}
+                        {new Date(
+                          m.updatedAt || m.createdAt
+                        ).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <span className="text-gray-400 text-sm">View →</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </Layout>
-  )
+  );
 }

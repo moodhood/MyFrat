@@ -1,101 +1,197 @@
-import bcrypt from "bcrypt"
-import jwt from "jsonwebtoken"
-import { PrismaClient } from "@prisma/client"
+// server/controllers/authController.js
 
-const prisma = new PrismaClient()
-const { JWT_SECRET, JWT_EXPIRES_IN } = process.env
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { PrismaClient } from '@prisma/client';
+import {
+  sendConfirmationEmail,
+  sendResetPasswordEmail
+} from '../utils/email.js';
 
-export async function register(req, res, next) {
+const prisma = new PrismaClient();
+const { JWT_SECRET } = process.env;
+
+if (!JWT_SECRET) {
+  throw new Error('❌ JWT_SECRET not defined in environment');
+}
+
+// REGISTER
+export async function register(req, res) {
   try {
-    const { email, password, name } = req.body
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" })
+    let { email, password, name } = req.body;
+    if (!email || !password || !name) {
+      return res.status(400).json({ error: 'All fields are required' });
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } })
+    email = email.trim().toLowerCase();
+    const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return res.status(409).json({ error: "Email already in use" })
+      return res.status(409).json({ error: 'Email already in use' });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10)
+    const role = await prisma.role.findFirst({ where: { name: 'Member' } });
+    if (!role) {
+      return res.status(500).json({ error: 'Default role not found' });
+    }
 
-    const user = await prisma.user.create({
-      data: { email, passwordHash, name }
-    })
+    const passwordHash = await bcrypt.hash(password, 10);
+    const confirmCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-    return res.status(201).json({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      createdAt: user.createdAt
-    })
+    await prisma.user.create({
+      data: {
+        email,
+        name,
+        passwordHash,
+        roleId: role.id,
+        emailConfirmed: false,
+        emailConfirmCode: confirmCode,
+      },
+    });
+
+    // Send branded confirmation email
+    await sendConfirmationEmail(email, confirmCode);
+
+    res.status(201).json({ message: 'Confirmation code sent' });
   } catch (err) {
-    next(err)
+    console.error('❌ Registration error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 }
 
-export async function login(req, res, next) {
+// CONFIRM EMAIL
+export async function confirmEmail(req, res) {
+  const { email, code } = req.body;
+  if (!email || !code) {
+    return res
+      .status(400)
+      .json({ error: 'Email and confirmation code are required' });
+  }
+
   try {
-    const { email, password } = req.body
+    const user = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.emailConfirmed) {
+      return res.status(200).json({ message: 'Email already confirmed' });
+    }
+
+    if (user.emailConfirmCode !== code) {
+      return res.status(400).json({ error: 'Invalid confirmation code' });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailConfirmed: true, emailConfirmCode: null },
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Email confirmation error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// LOGIN
+export async function login(req, res) {
+  try {
+    const { email, password } = req.body;
     if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" })
+      return res
+        .status(400)
+        .json({ error: 'Email and password are required' });
     }
 
     const user = await prisma.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        birthday: true,
-        address: true,           // ✅ added
-        profilePicture: true,    // ✅ added
-        createdAt: true,
-        passwordHash: true,
-        role: {
-          select: {
-            name: true,
-            permissions: true
-          }
-        }
-      }
-    })
-
-    if (!user) {
-      return res.status(401).json({ error: "Invalid credentials" })
+      where: { email: email.trim().toLowerCase() },
+      include: { role: true },
+    });
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const valid = await bcrypt.compare(password, user.passwordHash)
-    if (!valid) {
-      return res.status(401).json({ error: "Invalid credentials" })
+    if (!user.emailConfirmed) {
+      return res.status(403).json({ error: 'Email not confirmed' });
     }
 
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN || "7d" }
-    )
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    const { passwordHash, emailConfirmCode, resetToken, resetTokenExpiry, ...safeUser } = user;
 
-    // ✅ Send full user details including address and profilePicture
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        birthday: user.birthday,
-        address: user.address,
-        profilePicture: user.profilePicture,
-        createdAt: user.createdAt,
-        role: {
-          name: user.role?.name,
-          permissions: user.role?.permissions || []
-        }
-      }
-    })
+    res.json({ token, user: safeUser });
   } catch (err) {
-    next(err)
+    console.error('❌ Login error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// FORGOT PASSWORD
+export async function forgotPassword(req, res) {
+  try {
+    const email = req.body.email?.trim().toLowerCase();
+    if (!email) return res.sendStatus(204); // silent fail
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.emailConfirmed) {
+      return res.sendStatus(204);
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1h
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken: token, resetTokenExpiry: expiry },
+    });
+
+    const resetLink = `http://localhost:3001/reset-password/${token}`;
+
+    // Send branded reset-password email
+    await sendResetPasswordEmail(email, resetLink);
+
+    res.sendStatus(204);
+  } catch (err) {
+    console.error('❌ Forgot password error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// RESET PASSWORD
+export async function resetPassword(req, res) {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res
+        .status(400)
+        .json({ error: 'Token and new password are required' });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        resetToken: token,
+        resetTokenExpiry: { gt: new Date() },
+      },
+    });
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        resetToken: null,
+        resetTokenExpiry: null,
+      },
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Reset password error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 }
