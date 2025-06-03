@@ -13,25 +13,20 @@ export default function Dashboard() {
       return;
     }
 
-    fetch('http://localhost:3000/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
+    (async () => {
+      try {
+        const res = await fetch('http://localhost:3000/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (!res.ok) throw new Error('Failed to fetch user info');
-        return res.json();
-      })
-      .then((user) => {
-        const isOfficer = user?.role?.permissions?.includes('assign_duties');
-        if (isOfficer) {
-          navigate('/dashboard/officer');
-        } else {
-          navigate('/dashboard/member');
-        }
-      })
-      .catch((err) => {
+        const user = await res.json();
+        const isOfficer = Array.isArray(user.permissions) && user.permissions.includes('assign_duties');
+        navigate(isOfficer ? '/dashboard/officer' : '/dashboard/member');
+      } catch (err) {
         console.error('Dashboard redirect error:', err);
         navigate('/login');
-      });
+      }
+    })();
   }, [navigate]);
 
   return (

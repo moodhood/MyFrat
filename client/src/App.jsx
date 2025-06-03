@@ -1,4 +1,5 @@
 // src/App.jsx
+
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
@@ -13,7 +14,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ResetPassword from './pages/ResetPassword';
 
-// Member‐only Pages
+// Member-only Pages
 import DashboardRedirect from './pages/Dashboard';
 import OfficerDashboard from './pages/OfficerDashboard';
 import MemberDashboard from './pages/MemberDashboard';
@@ -31,8 +32,11 @@ import NewLog from './pages/NewLog';
 import Profile from './pages/Profile';
 import EditProfile from './pages/EditProfile';
 
-// File System Page (replaces the old Documents page)
+// File System Page (Documents)
 import FileSystemPage from './pages/FileSystemPage';
+
+// Roles & Permissions Page
+import Roles from './pages/Roles';
 
 export default function App() {
   return (
@@ -206,6 +210,16 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <FileSystemPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Roles & Permissions */}
+          <Route
+            path="/roles"
+            element={
+              <ProtectedRoute>
+                <Roles />
               </ProtectedRoute>
             }
           />

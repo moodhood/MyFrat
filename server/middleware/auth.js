@@ -1,4 +1,4 @@
-// middleware/auth.js
+// src/middleware/auth.js
 
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
@@ -12,13 +12,11 @@ if (!JWT_SECRET) {
 
 export default async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
-
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   const token = authHeader.slice(7);
-
   let payload;
   try {
     payload = jwt.verify(token, JWT_SECRET);
@@ -32,29 +30,54 @@ export default async function authMiddleware(req, res, next) {
   }
 
   try {
-    const user = await prisma.user.findUnique({
+    // FETCH userRoles → role.permissions for ALL assigned roles
+    const userRecord = await prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
         email: true,
-        role: { select: { permissions: true } }
-      }
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                id: true,
+                name: true,
+                displayName: true,
+                permissions: true,
+              },
+            },
+          },
+        },
+      },
     });
 
-    if (!user) {
-      return res.status(401).json({ error: 'User not found (possibly deleted)' });
+    if (!userRecord) {
+      return res.status(401).json({ error: 'User not found (maybe deleted)' });
     }
 
-    // Update lastSeen but don't include in returned data
+    // Update lastSeen timestamp
     await prisma.user.update({
       where: { id: userId },
-      data: { lastSeen: new Date() }
+      data: { lastSeen: new Date() },
     });
 
+    // Flatten roles → array of role objects
+    const rolesArray = userRecord.userRoles.map((ur) => ur.role);
+
+    // Flatten permissions (dedupe by Set)
+    const permissionsSet = new Set();
+    rolesArray.forEach((role) => {
+      if (Array.isArray(role.permissions)) {
+        role.permissions.forEach((perm) => permissionsSet.add(perm));
+      }
+    });
+    const permissions = Array.from(permissionsSet);
+
     req.user = {
-      id: user.id,
-      email: user.email,
-      permissions: user.role?.permissions || []
+      id: userRecord.id,
+      email: userRecord.email,
+      roles: rolesArray,
+      permissions,
     };
 
     next();

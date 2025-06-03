@@ -1,141 +1,262 @@
-// src/pages/Motions.jsx
-import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+// src/pages/NewDuty.jsx
+
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { toast } from 'react-toastify';
 
-export default function Motions() {
-  const [activeMotions, setActiveMotions] = useState([]);
-  const [archivedMotions, setArchivedMotions] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function NewDuty() {
+  const [allMembers, setAllMembers] = useState([]);
+  const [selectedMemberId, setSelectedMemberId] = useState('');
+  const [assignedMembers, setAssignedMembers] = useState([]); // [{ userId, name }]
+  const [name, setName] = useState('');
+  const [dayOfWeek, setDayOfWeek] = useState('1'); // default Monday
+  const [endDate, setEndDate] = useState('');
   const navigate = useNavigate();
 
+  // Fetch all users for the dropdown
   useEffect(() => {
-    const fetchData = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast.error('You must be logged in.');
+      navigate('/login');
+      return;
+    }
+    async function fetchUsers() {
       try {
-        const token = localStorage.getItem('token');
-        const [activeRes, archivedRes] = await Promise.all([
-          fetch('http://localhost:3000/api/motions', {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch('http://localhost:3000/api/motions?archived=true', {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
-
-        if (!activeRes.ok || !archivedRes.ok) {
-          throw new Error('Failed to fetch motions');
-        }
-
-        const activeData = await activeRes.json();
-        const archivedData = await archivedRes.json();
-
-        setActiveMotions(Array.isArray(activeData) ? activeData : []);
-        setArchivedMotions(
-          Array.isArray(archivedData) ? archivedData : []
-        );
+        const res = await fetch('http://localhost:3000/api/users', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Failed to fetch members');
+        const data = await res.json();
+        setAllMembers(data);
       } catch (err) {
-        console.error('❌ Error fetching motions:', err);
-        toast.error(err.message || 'Error loading motions.');
-        setActiveMotions([]);
-        setArchivedMotions([]);
-      } finally {
-        setLoading(false);
+        console.error(err);
+        toast.error('Could not load members.');
       }
+    }
+    fetchUsers();
+  }, [navigate]);
+
+  // Add selected member to rotation (if not already in list)
+  const handleAddMember = () => {
+    if (!selectedMemberId) return;
+    const user = allMembers.find((u) => u.id === Number(selectedMemberId));
+    if (!user) return;
+
+    // Prevent duplicates
+    if (assignedMembers.some((m) => m.userId === user.id)) {
+      toast.warn(`${user.name} is already in the rotation.`);
+      return;
+    }
+
+    setAssignedMembers((prev) => [
+      ...prev,
+      { userId: user.id, name: user.name },
+    ]);
+    setSelectedMemberId('');
+  };
+
+  // Remove a member from the rotation
+  const handleRemoveMember = (userId) => {
+    setAssignedMembers((prev) =>
+      prev.filter((m) => m.userId !== userId)
+    );
+  };
+
+  // Move a member up or down in the rotation order
+  const moveMember = (index, direction) => {
+    setAssignedMembers((prev) => {
+      const copy = [...prev];
+      const target = copy[index];
+      const swapWith = copy[index + direction];
+      if (!swapWith) return prev;
+      copy[index] = swapWith;
+      copy[index + direction] = target;
+      return copy;
+    });
+  };
+
+  // Submit form: create the duty
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      toast.error('Duty name is required.');
+      return;
+    }
+    if (assignedMembers.length === 0) {
+      toast.error('You must assign at least one member.');
+      return;
+    }
+
+    const payload = {
+      name: name.trim(),
+      dayOfWeek: Number(dayOfWeek),
+      memberIds: assignedMembers.map((m) => m.userId),
+      endDate: endDate || null,
     };
 
-    fetchData();
-  }, []);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/duties', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to create duty.');
+      }
+      toast.success('Duty created successfully.');
+      navigate('/duties');
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message);
+    }
+  };
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto p-4 space-y-10">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Voting Motions</h1>
-          <button
-            onClick={() => navigate('/motions/new')}
-            className="bg-blue-600 text-white px-4 py-2 rounded text-sm"
-          >
-            + New Motion
-          </button>
-        </div>
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <h1 className="text-2xl font-semibold mb-4">Create New Duty</h1>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Duty Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Duty Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+              placeholder="e.g. Bathroom Downstairs Cleaning"
+            />
+          </div>
 
-        {/* Active Motions */}
-        <div>
-          <h2 className="text-xl font-semibold mb-2">🟢 Active & Open</h2>
-          {loading ? (
-            <p className="text-gray-500">Loading motions...</p>
-          ) : activeMotions.length === 0 ? (
-            <p className="text-gray-500">
-              No active motions available.
-            </p>
-          ) : (
-            <ul className="space-y-4">
-              {activeMotions.map((m) => (
-                <li
-                  key={m.id}
-                  className="bg-white border rounded-lg p-4 shadow-sm hover:bg-gray-50 transition"
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-semibold">{m.title}</p>
-                      <p className="text-sm text-gray-600">
-                        {m.stopped ? '🔒 Closed' : '🟢 Open'} —{' '}
-                        {new Date(m.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <Link
-                      to={`/motions/${m.id}`}
-                      className="text-blue-600 text-sm hover:underline"
-                    >
-                      View →
-                    </Link>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+          {/* Day of Week */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Day of Week
+            </label>
+            <select
+              value={dayOfWeek}
+              onChange={(e) => setDayOfWeek(e.target.value)}
+              className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+            >
+              <option value="1">Monday</option>
+              <option value="2">Tuesday</option>
+              <option value="3">Wednesday</option>
+              <option value="4">Thursday</option>
+              <option value="5">Friday</option>
+              <option value="6">Saturday</option>
+              <option value="7">Sunday</option>
+            </select>
+          </div>
 
-        {/* Archived Motions */}
-        <div>
-          <h2 className="text-xl font-semibold mb-2">
-            📦 Archived Results
-          </h2>
-          {loading ? (
-            <p className="text-gray-500">
-              Loading archived motions...
-            </p>
-          ) : archivedMotions.length === 0 ? (
-            <p className="text-gray-500">
-              No motions have been archived yet.
-            </p>
-          ) : (
-            <ul className="space-y-4">
-              {archivedMotions.map((m) => (
-                <li
-                  key={m.id}
-                  onClick={() => navigate(`/motions/${m.id}`)}
-                  className="bg-white border rounded-lg p-4 shadow-sm hover:bg-gray-50 transition cursor-pointer"
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-semibold">{m.title}</p>
-                      <p className="text-sm text-gray-600">
-                        Archived:{' '}
-                        {new Date(
-                          m.updatedAt || m.createdAt
-                        ).toLocaleDateString()}
-                      </p>
+          {/* End Date (optional) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              End Date (optional)
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+            />
+          </div>
+
+          {/* Assign Members */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Add Member to Rotation
+            </label>
+            <div className="flex gap-2 items-center mb-2">
+              <select
+                value={selectedMemberId}
+                onChange={(e) => setSelectedMemberId(e.target.value)}
+                className="flex-1 border border-gray-300 rounded px-3 py-2"
+              >
+                <option value="">-- Select Member --</option>
+                {allMembers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.email})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAddMember}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+              >
+                Add
+              </button>
+            </div>
+
+            {/* Show assigned members with reorder controls */}
+            {assignedMembers.length > 0 && (
+              <ul className="space-y-2">
+                {assignedMembers.map((m, idx) => (
+                  <li
+                    key={m.userId}
+                    className="flex items-center justify-between border rounded px-3 py-2 bg-gray-50"
+                  >
+                    <div className="flex items-center gap-4">
+                      <span>{m.name}</span>
                     </div>
-                    <span className="text-gray-400 text-sm">View →</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveMember(idx, -1)}
+                        disabled={idx === 0}
+                        className={`px-2 py-1 border rounded ${
+                          idx === 0
+                            ? 'text-gray-400 border-gray-200 cursor-not-allowed'
+                            : 'text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveMember(idx, +1)}
+                        disabled={idx === assignedMembers.length - 1}
+                        className={`px-2 py-1 border rounded ${
+                          idx === assignedMembers.length - 1
+                            ? 'text-gray-400 border-gray-200 cursor-not-allowed'
+                            : 'text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        ▼
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(m.userId)}
+                        className="px-2 py-1 text-red-600 hover:bg-red-100 border border-red-200 rounded"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Submit Button */}
+          <div className="pt-4">
+            <button
+              type="submit"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded"
+            >
+              Create Duty
+            </button>
+          </div>
+        </form>
       </div>
     </Layout>
   );

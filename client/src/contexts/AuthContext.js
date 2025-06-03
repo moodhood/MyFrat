@@ -19,7 +19,7 @@ export function AuthProvider({ children }) {
   const [status, setStatus] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Helper: fetch /api/auth/me to restore full user + permissions
+  // Fetch /api/auth/me to restore full user + permissions
   const fetchCurrentUser = async (jwt) => {
     try {
       const res = await fetch('http://localhost:3000/api/auth/me', {
@@ -32,7 +32,8 @@ export function AuthProvider({ children }) {
         throw new Error('Failed to fetch user');
       }
       const data = await res.json();
-      // data.role is { name, permissions }
+      // data.roles is an array of { id, name, displayName, permissions }
+      // data.permissions is an array of strings
       const restoredUser = {
         id: data.id,
         name: data.name,
@@ -42,16 +43,14 @@ export function AuthProvider({ children }) {
         address: data.address,
         profilePicture: data.profilePicture,
         createdAt: data.createdAt,
-        role: data.role.name,
-        permissions: data.role.permissions,
+        roles: data.roles,
+        permissions: data.permissions,
       };
-      // Update both state and localStorage
       localStorage.setItem('authUser', JSON.stringify(restoredUser));
       setUser(restoredUser);
       setStatus(true);
     } catch (err) {
       console.error('Failed to restore user from token:', err);
-      // If it fails, clear everything
       localStorage.removeItem('token');
       localStorage.removeItem('authUser');
       setUser(null);
@@ -90,11 +89,10 @@ export function AuthProvider({ children }) {
       throw err;
     }
 
-    // Store token, then fetch /me
     localStorage.setItem('token', data.token);
     setToken(data.token);
 
-    // Immediately fetch the full user from /me (so permissions are up-to-date)
+    // Immediately fetch the full user from /me
     await fetchCurrentUser(data.token);
   };
 
@@ -106,7 +104,7 @@ export function AuthProvider({ children }) {
       body: JSON.stringify({
         email: email.trim().toLowerCase(),
         password,
-        name,
+        name: name.trim(),
       }),
     });
 
@@ -143,7 +141,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // While we are checking for token → /me
+  // While checking for token → /me
   if (loading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-white">

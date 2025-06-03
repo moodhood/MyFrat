@@ -7,6 +7,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import { ROLE_PRIORITY } from '../constants/roles';
 
 export default function Profile() {
   const { user, setAuthState, logout } = useContext(AuthContext);
@@ -32,8 +33,6 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [imgKey, setImgKey] = useState(Date.now());
-
-  // Track whether we're showing the “Delete Account” confirmation modal
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
@@ -102,11 +101,22 @@ export default function Profile() {
         setMessage(data.error || 'Update failed');
         toast.error(data.error || 'Update failed');
       } else {
+        // Backend returns user with roles array
+        const updatedRoles = data.roles || [];
+        const sorted = [...updatedRoles].sort((a, b) => {
+          return ROLE_PRIORITY.indexOf(a.name) - ROLE_PRIORITY.indexOf(b.name);
+        });
+
         const updatedUser = {
           ...data,
-          role: data.role?.name || data.role,
-          permissions: data.role?.permissions || data.permissions || [],
+          roles: sorted,
+          permissions: sorted.reduce((acc, r) => {
+            (r.permissions || []).forEach((p) => acc.add(p));
+            return acc;
+          }, new Set()),
         };
+        updatedUser.permissions = Array.from(updatedUser.permissions);
+
         localStorage.setItem('authUser', JSON.stringify(updatedUser));
         setAuthState(updatedUser);
         setMessage('Profile updated successfully!');
@@ -146,7 +156,6 @@ export default function Profile() {
     setMessage('');
   };
 
-  // ─── Delete Account Handlers ────────────────────────────────────────────────
   const openDeleteModal = () => {
     setConfirmingDelete(true);
   };
@@ -180,15 +189,6 @@ export default function Profile() {
     setConfirmingDelete(false);
   };
 
-  const roleColors = {
-    admin: 'bg-red-100 text-red-800',
-    officer: 'bg-green-100 text-green-800',
-    member: 'bg-blue-100 text-blue-800',
-    guest: 'bg-gray-100 text-gray-800',
-  };
-  const roleName = user?.role?.name || user?.role || 'member';
-  const roleClass = roleColors[roleName.toLowerCase()] || 'bg-gray-100 text-gray-800';
-
   if (!user) {
     return (
       <Layout>
@@ -199,13 +199,19 @@ export default function Profile() {
     );
   }
 
+  // Sort user’s roles by priority
+  const sortedRoles = [...(user.roles || [])].sort((a, b) => {
+    return ROLE_PRIORITY.indexOf(a.name) - ROLE_PRIORITY.indexOf(b.name);
+  });
+
   return (
     <Layout>
       <div className="max-w-2xl mx-auto p-4 space-y-6">
+        {/* Header: avatar, name, and role badges */}
         <div className="flex items-center gap-4">
           <img
             src={
-              user?.profilePicture
+              user.profilePicture
                 ? `http://localhost:3000/uploads/${user.profilePicture}?v=${imgKey}`
                 : '/default-avatar.png'
             }
@@ -214,16 +220,42 @@ export default function Profile() {
             onError={(e) => (e.target.src = '/default-avatar.png')}
           />
           <div>
-            <h1 className="text-2xl font-bold">{user?.name}</h1>
-            <span
-              className={`inline-block ${roleClass} text-xs font-semibold px-2.5 py-0.5 rounded`}
-            >
-              {roleName}
-            </span>
+            <h1 className="text-2xl font-bold">{user.name}</h1>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {sortedRoles.map((r) => (
+                <span
+                  key={r.id}
+                  className={`inline-block ${
+                    ({
+                      'High Alpha':    'bg-red-100 text-red-800',
+                      'High Nerd':     'bg-purple-100 text-purple-800',
+                      'High Beta':     'bg-orange-100 text-orange-800',
+                      'High Theta':    'bg-yellow-100 text-yellow-800',
+                      'High Gamma':    'bg-green-100 text-green-800',
+                      'High Tau':      'bg-teal-100 text-teal-800',
+                      'High Iota':     'bg-indigo-100 text-indigo-800',
+                      'High Rho':      'bg-pink-100 text-pink-800',
+                      'High Kappa':    'bg-lime-100 text-lime-800',
+                      'High Delta':    'bg-amber-100 text-amber-800',
+                      'High Phi':      'bg-emerald-100 text-emerald-800',
+                      'High Sigma':    'bg-cyan-100 text-cyan-800',
+                      'High Epsilon':  'bg-sky-100 text-sky-800',
+                      'High Pi':       'bg-fuchsia-100 text-fuchsia-800',
+                      'House Manager':'bg-gray-100 text-gray-800',
+                      'High Jock':     'bg-blue-100 text-blue-800',
+                      'Member':        'bg-blue-200 text-blue-900',
+                    })[r.name] || 'bg-gray-100 text-gray-800'
+                  } text-xs font-semibold px-2.5 py-0.5 rounded`}
+                >
+                  {r.name}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Personal info inputs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <input
               name="name"
@@ -354,7 +386,7 @@ export default function Profile() {
                   onClick={() =>
                     setShowPassword((prev) => ({ ...prev, confirm: !prev.confirm }))
                   }
-                  className="absolute top-2 right-2 cursor-pointer"
+                  className="absolute top-2 right-2 cursor-pointer" 
                 >
                   {showPassword.confirm ? <EyeOff size={18} /> : <Eye size={18} />}
                 </div>
@@ -400,7 +432,7 @@ export default function Profile() {
           )}
         </form>
 
-        {/* ─── Delete Account Section ──────────────────────────────────────────────── */}
+        {/* Delete Account Section */}
         <div className="pt-6 border-t">
           <button
             onClick={openDeleteModal}
@@ -412,7 +444,7 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* ─── ConfirmModal for Deleting Account ────────────────────────────────────── */}
+      {/* ConfirmModal for Deleting Account */}
       {confirmingDelete && (
         <ConfirmModal
           title="Delete Your Account?"

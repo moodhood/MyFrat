@@ -1,4 +1,5 @@
 // src/pages/OfficerDashboard.jsx
+
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
@@ -35,6 +36,13 @@ export default function OfficerDashboard() {
     );
   }
 
+  const {
+    totalMembers,
+    totalHours,
+    completedDuties,
+    logs, // philanthropy logs
+  } = data;
+
   return (
     <Layout>
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-10">
@@ -43,10 +51,10 @@ export default function OfficerDashboard() {
           <h1 className="text-3xl font-bold">Officer Dashboard</h1>
           <div className="mt-4 sm:mt-0 text-gray-700 space-y-1 text-sm sm:text-base">
             <p>
-              👥 <strong>{data.totalMembers}</strong> Total Members
+              👥 <strong>{totalMembers}</strong> Total Members
             </p>
             <p>
-              🕒 <strong>{data.totalHours}</strong> Total Hours Logged
+              🕒 <strong>{totalHours}</strong> Total Hours Logged
             </p>
           </div>
         </div>
@@ -59,28 +67,25 @@ export default function OfficerDashboard() {
               ✅ Recently Completed Duties
             </h2>
             <div className="max-h-80 overflow-y-auto pr-2">
-              {data.completedDuties?.length === 0 ? (
+              {completedDuties?.length === 0 ? (
                 <p className="text-sm text-gray-500">
                   No duties completed yet.
                 </p>
               ) : (
                 <ul className="space-y-2 text-sm">
-                  {data.completedDuties.map((duty) => (
+                  {completedDuties.map((duty) => (
                     <Link
                       key={duty.id}
                       to={`/members/${duty.user.id}`}
                       className="block hover:bg-gray-100 transition rounded px-1 py-1"
                     >
-                      <p className="font-medium text-gray-800">
-                        {duty.user.name}
-                      </p>
+                      <p className="font-medium text-gray-800">{duty.user.name}</p>
                       <p className="text-gray-700">{duty.description}</p>
                       <p className="text-gray-400 text-xs italic">
                         {duty.completedAt
-                          ? `Completed ${formatDistanceToNow(
-                              new Date(duty.completedAt),
-                              { addSuffix: true }
-                            )}`
+                          ? `Completed ${formatDistanceToNow(new Date(duty.completedAt), {
+                              addSuffix: true,
+                            })}`
                           : 'Completion time unknown'}
                       </p>
                     </Link>
@@ -96,25 +101,20 @@ export default function OfficerDashboard() {
               🤝 Recent Philanthropy Logs
             </h2>
             <div className="max-h-80 overflow-y-auto pr-2">
-              {data.logs?.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  No logs submitted yet.
-                </p>
+              {logs?.length === 0 ? (
+                <p className="text-sm text-gray-500">No logs submitted yet.</p>
               ) : (
                 <ul className="space-y-2 text-sm">
-                  {data.logs.map((log) => (
+                  {logs.map((log) => (
                     <Link
                       key={log.id}
                       to={`/members/${log.user.id}`}
                       className="block hover:bg-gray-100 transition rounded px-1 py-1"
                     >
-                      <p className="font-medium text-gray-800">
-                        {log.user.name}
-                      </p>
+                      <p className="font-medium text-gray-800">{log.user.name}</p>
                       <p className="text-gray-700">{log.organization}</p>
                       <p className="text-gray-500 text-xs">
-                        {log.hours} hour(s) on{' '}
-                        {new Date(log.date).toLocaleDateString()}
+                        {log.hours} hour(s) on {new Date(log.date).toLocaleDateString()}
                       </p>
                       <p className="text-gray-400 text-xs italic">
                         Uploaded{' '}

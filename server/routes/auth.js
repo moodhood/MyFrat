@@ -1,3 +1,5 @@
+// src/routes/auth.js
+
 import express from 'express';
 import {
   register,
@@ -29,7 +31,9 @@ router.post('/resend-code', async (req, res) => {
   }
 
   if (!canResend(email)) {
-    return res.status(429).json({ error: 'Please wait before requesting another code.' });
+    return res
+      .status(429)
+      .json({ error: 'Please wait before requesting another code.' });
   }
 
   try {
@@ -61,7 +65,7 @@ router.post('/resend-code', async (req, res) => {
 // --- Get Current Authenticated User ---
 router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
+    const userRecord = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
         id: true,
@@ -72,18 +76,52 @@ router.get('/me', authMiddleware, async (req, res) => {
         address: true,
         profilePicture: true,
         createdAt: true,
-        role: { select: { name: true, permissions: true } },
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                id: true,
+                name: true,
+                displayName: true,
+                permissions: true,
+              },
+            },
+          },
+        },
       },
     });
 
-    if (!user) {
+    if (!userRecord) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.status(200).json(user);
+    // Extract roles array
+    const rolesArray = userRecord.userRoles.map((ur) => ur.role);
+
+    // Flatten permissions into a de-duplicated array
+    const permissionsSet = new Set();
+    rolesArray.forEach((role) => {
+      if (Array.isArray(role.permissions)) {
+        role.permissions.forEach((perm) => permissionsSet.add(perm));
+      }
+    });
+    const permissions = Array.from(permissionsSet);
+
+    return res.status(200).json({
+      id: userRecord.id,
+      name: userRecord.name,
+      email: userRecord.email,
+      phone: userRecord.phone,
+      birthday: userRecord.birthday,
+      address: userRecord.address,
+      profilePicture: userRecord.profilePicture,
+      createdAt: userRecord.createdAt,
+      roles: rolesArray,
+      permissions,
+    });
   } catch (err) {
     console.error('❌ Error fetching user:', err);
-    res.status(500).json({ error: 'Failed to fetch user' });
+    return res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
 

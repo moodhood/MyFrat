@@ -1,3 +1,5 @@
+// schema.prisma
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -8,46 +10,97 @@ generator client {
 }
 
 model Role {
-  id          Int     @id @default(autoincrement())
-  name        String  @unique
-  permissions Json    @default("[]")
-  users       User[]
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  displayName String     @unique
+  permissions Json       @default("[]")
+  userRoles   UserRole[]
 }
 
 model User {
-  id                Int               @id @default(autoincrement())
-  email             String            @unique
-  passwordHash      String
-  name              String?
-  phone             String?
-  birthday          DateTime?
-  address           String?
-  profilePicture    String?
-  lastSeen          DateTime?         @default(now())
-  emailConfirmed    Boolean           @default(false)
-  emailConfirmCode  String?
-  resetToken        String?
-  resetTokenExpiry  DateTime?
-  createdAt         DateTime          @default(now())
+  id               Int               @id @default(autoincrement())
+  email            String            @unique
+  passwordHash     String
+  name             String?
+  phone            String?
+  birthday         DateTime?
+  address          String?
+  profilePicture   String?
+  lastSeen         DateTime?         @default(now())
+  emailConfirmed   Boolean           @default(false)
+  emailConfirmCode String?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  createdAt        DateTime          @default(now())
 
-  roleId            Int
-  role              Role              @relation(fields: [roleId], references: [id])
+  userRoles        UserRole[]
+  duties           DutyAssignment[]
+  dutyMembers      DutyMember[]
+  philanthropy     PhilanthropyLog[]
+  votes            Vote[]
+  createdMotions   Motion[]           @relation("CreatedMotions")
+}
 
-  duties            DutyAssignment[]
-  philanthropy      PhilanthropyLog[]
-  votes             Vote[]
-  createdMotions    Motion[]          @relation("CreatedMotions")
+model UserRole {
+  id     Int  @id @default(autoincrement())
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId Int
+
+  @@unique([userId, roleId])
+}
+
+// ─── Recurring duties and assignments ────────────────────────────
+
+model Duty {
+  id           Int             @id @default(autoincrement())
+  name         String
+  dayOfWeek    Int             // 1=Monday .. 7=Sunday
+
+  // Optional “weekly due time” (hour:minute). If both null → interpret as 00:00.
+  dueHour      Int?    // 0..23
+  dueMinute    Int?    // 0..59
+
+  startDate    DateTime
+  endDate      DateTime?        // optional final date for assignment generation
+  active       Boolean          @default(true)
+  currentIndex Int              @default(0)
+
+  members      DutyMember[]
+  assignments  DutyAssignment[]
+
+  createdBy    Int
+  createdAt    DateTime         @default(now())
+}
+
+model DutyMember {
+  id       Int   @id @default(autoincrement())
+  duty     Duty  @relation(fields: [dutyId], references: [id], onDelete: Cascade)
+  dutyId   Int
+  user     User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   Int
+  order    Int
+
+  @@unique([dutyId, userId])
+  @@index([dutyId, order])
 }
 
 model DutyAssignment {
-  id          Int      @id @default(autoincrement())
-  description String
-  dueDate     DateTime
-  completed   Boolean  @default(false)
-  completedAt DateTime?
+  id        Int      @id @default(autoincrement())
+  duty      Duty     @relation(fields: [dutyId], references: [id], onDelete: Cascade)
+  dutyId    Int
+  assignee  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
 
-  userId      Int
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekOf    DateTime
+  dueDate   DateTime
+
+  done      Boolean  @default(false)
+  doneAt    DateTime?
+
+  @@index([userId, weekOf])
+  @@index([dutyId, weekOf])
 }
 
 model PhilanthropyLog {
@@ -80,15 +133,15 @@ model Motion {
 }
 
 model Vote {
-  id        Int      @id @default(autoincrement())
-  choice    String
-  castAt    DateTime @default(now())
+  id       Int      @id @default(autoincrement())
+  choice   String
+  castAt   DateTime @default(now())
 
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   Int
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  motionId  Int
-  motion    Motion   @relation(fields: [motionId], references: [id], onDelete: Cascade)
+  motionId Int
+  motion   Motion   @relation(fields: [motionId], references: [id], onDelete: Cascade)
 
   @@unique([userId, motionId])
 }
@@ -113,21 +166,21 @@ enum EventCategory {
 model Folder {
   id         Int        @id @default(autoincrement())
   name       String
-  parentId   Int?       // nullable for root-level folders
+  parentId   Int?
   parent     Folder?    @relation("Subfolders", fields: [parentId], references: [id])
   children   Folder[]   @relation("Subfolders")
   createdAt  DateTime   @default(now())
-  createdBy  Int        // officer user ID
-  documents  Document[] // one-to-many to Document
+  createdBy  Int
+  documents  Document[]
 }
 
 model Document {
-  id         Int        @id @default(autoincrement())
+  id         Int      @id @default(autoincrement())
   name       String
   url        String
-  pdfUrl     String?    // optional PDF version (converted from Office formats)
+  pdfUrl     String?
   category   String?
-  folderId   Int?       // nullable if in root
-  folder     Folder?    @relation(fields: [folderId], references: [id])
-  createdAt  DateTime   @default(now())
+  folderId   Int?
+  folder     Folder?  @relation(fields: [folderId], references: [id])
+  createdAt  DateTime @default(now())
 }
